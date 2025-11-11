@@ -1,15 +1,12 @@
-# services.py
 from models import User, Product, Message, Category, Favorite, Advertisement
 from typing import Dict, Optional, List
 import uuid
 
-# --- 模拟推送通知服务 (无变动) ---
 class NotificationService:
     def trigger_push(self, user_id: uuid.UUID, notification_content: str):
         print(f"\n[通知服务(Notify Svc)]: 正在准备向用户 {user_id} 发送推送...")
         print(f"[通知服务(Notify Svc)]: 推送成功: '{notification_content}'\n")
 
-# --- 模拟即时通讯服务 (功能增强) ---
 class IMService:
     def __init__(self, notification_service: NotificationService, user_service: 'UserService'):
         self.notification_service = notification_service
@@ -26,14 +23,12 @@ class IMService:
 
         if receiver.is_online:
             print(f"[IM服务]: 用户 {receiver.nickname} 在线，模拟WebSocket推送。")
-            # 在真实应用中，这里会有一个WebSocket服务器来推送消息
         else:
             print(f"[IM服务]: 用户 {receiver.nickname} 离线，触发推送通知。")
             self.notification_service.trigger_push(receiver.userId, f"您有来自 {sender.nickname} 的一条新消息")
         return message
         
     def get_chat_history(self, user1: User, user2: User) -> List[Message]:
-        """获取两个用户之间的聊天记录"""
         history = []
         for msg in self.message_db:
             is_involved = (msg.sender.userId == user1.userId and msg.receiver.userId == user2.userId) or \
@@ -42,7 +37,6 @@ class IMService:
                 history.append(msg)
         return sorted(history, key=lambda m: m.sentAt)
 
-# --- 用户和商品管理服务 (功能增强) ---
 class UserService:
     def __init__(self):
         self.user_db: Dict[str, User] = {}
@@ -69,7 +63,6 @@ class UserService:
         return None
     
     def get_all_users(self) -> List[User]:
-        """获取所有已注册的用户"""
         return list(self.user_db.values())
 
 class ProductService:
@@ -97,8 +90,7 @@ class ProductService:
         return [p for p in self.product_db.values() if p.seller.userId == seller.userId]
 
     def search_products(self, query: str) -> List[Product]:
-        """根据关键词搜索商品"""
-        if not query: return list(self.product_db.values()) # 如果搜索为空，返回所有商品
+        if not query: return list(self.product_db.values())
         query = query.lower()
         results = []
         for product in self.product_db.values():
@@ -107,8 +99,6 @@ class ProductService:
         return results
 
     def add_to_favorites(self, user: User, product: Product):
-        """将商品添加到收藏夹"""
-        # 防止重复收藏
         for fav in self.favorites_db:
             if fav.user.userId == user.userId and fav.product.productId == product.productId:
                 return
@@ -116,14 +106,11 @@ class ProductService:
         self.favorites_db.append(favorite)
 
     def get_user_favorites(self, user: User) -> List[Product]:
-        """获取用户收藏的所有商品"""
         return [fav.product for fav in self.favorites_db if fav.user.userId == user.userId]
         
     def add_advertisement(self, title, image_url, target_url, position):
-        """添加广告"""
         ad = Advertisement(title, image_url, target_url, position)
         self.advertisement_db.append(ad)
 
     def get_advertisements_by_position(self, position: str) -> List[Advertisement]:
-        """根据位置获取广告"""
         return [ad for ad in self.advertisement_db if ad.position == position]
