@@ -1,6 +1,7 @@
 import pytest
-from services import UserService, ProductService
+from services import UserService, ProductService, IMService, NotificationService
 from models import User
+import uuid
 
 # --- 子功能 1: UserService 测试 ---
 
@@ -89,3 +90,107 @@ def test_add_favorites(product_service, sample_user):
     favs = product_service.get_user_favorites(sample_user)
     assert len(favs) == 1
     assert favs[0] == prod
+
+def test_logout_sets_user_offline(user_service):
+    user_service.register("13800000000", "logout@test.com", "123456", "LogoutUser")
+    user = user_service.login("logout@test.com", "123456")
+    assert user is not None
+    assert user.is_online is True
+    user_service.logout(user)
+    assert user.is_online is False
+
+def test_get_all_users_and_find_user_not_found(user_service):
+    user_service.register("1", "a@test.com", "1", "A")
+    user_service.register("2", "b@test.com", "1", "B")
+    users = user_service.get_all_users()
+    assert len(users) == 2
+    assert user_service.find_user_by_id(uuid.uuid4()) is None
+
+def test_notification_service_writes_log(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    svc = NotificationService()
+    user_id = uuid.uuid4()
+    svc.trigger_push(user_id, "Ping")
+    log_path = tmp_path / "notification.log"
+    assert log_path.exists()
+    assert "Ping" in log_path.read_text(encoding="utf-8")
+
+def test_im_offline_triggers_notification_and_history(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    u_svc = UserService()
+    n_svc = NotificationService()
+    im_svc = IMService(n_svc, u_svc)
+
+    sender = u_svc.register("1", "im_s@test.com", "1", "Sender")
+    receiver = u_svc.register("2", "im_r@test.com", "1", "Receiver")
+
+    msg = im_svc.receive_message(sender, receiver.userId, "Hello IM")
+    assert msg is not None
+    assert msg.content == "Hello IM"
+
+    history = im_svc.get_chat_history(sender, receiver)
+    assert len(history) == 1
+    assert history[0].content == "Hello IM"
+
+    log_path = tmp_path / "notification.log"
+    assert log_path.exists()
+    assert "Hello IM" in log_path.read_text(encoding="utf-8")
+
+def test_im_receiver_not_found_returns_none(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    u_svc = UserService()
+    n_svc = NotificationService()
+    im_svc = IMService(n_svc, u_svc)
+    sender = u_svc.register("1", "im_s2@test.com", "1", "Sender")
+    msg = im_svc.receive_message(sender, uuid.uuid4(), "X")
+    assert msg is None
+
+def test_im_online_does_not_create_notification_log(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    u_svc = UserService()
+    n_svc = NotificationService()
+    im_svc = IMService(n_svc, u_svc)
+
+    sender = u_svc.register("1", "im_s3@test.com", "1", "Sender")
+    receiver = u_svc.register("2", "im_r3@test.com", "1", "Receiver")
+    u_svc.login("im_r3@test.com", "1")
+
+    msg = im_svc.receive_message(sender, receiver.userId, "Hello Online")
+    assert msg is not None
+    assert not (tmp_path / "notification.log").exists()
+
+def test_find_product_by_id_and_get_products_by_seller(product_service):
+    seller1 = User("1", "seller1@test.com", "1", "S1")
+    seller2 = User("2", "seller2@test.com", "1", "S2")
+    p1 = product_service.publish_product(seller1, "P1", "D1", 1.0, "C1")
+    p2 = product_service.publish_product(seller2, "P2", "D2", 2.0, "C2")
+
+    assert product_service.find_product_by_id(p1.productId) == p1
+    assert product_service.find_product_by_id(uuid.uuid4()) is None
+
+    seller1_products = product_service.get_products_by_seller(seller1)
+    assert p1 in seller1_products
+    assert p2 not in seller1_products
+
+def test_add_to_favorites_duplicate_does_not_add_twice(product_service):
+    user = User("1", "favdup@test.com", "1", "U")
+    prod = product_service.publish_product(user, "Dup", "D", 1.0, "C")
+    product_service.add_to_favorites(user, prod)
+    product_service.add_to_favorites(user, prod)
+    favs = product_service.get_user_favorites(user)
+    assert len(favs) == 1
+
+def test_search_products_eval_exception_path(product_service):
+    seller = User("1", "eval@test.com", "1", "U")
+    product_service.publish_product(seller, "Alpha", "Beta", 1.0, "C")
+    results = product_service.search_products("a'b")
+    assert isinstance(results, list)
+
+def test_advertisement_add_and_filter(product_service):
+    product_service.add_advertisement("A1", "", "", "home")
+    product_service.add_advertisement("A2", "", "", "home")
+    product_service.add_advertisement("B1", "", "", "side")
+    home_ads = product_service.get_advertisements_by_position("home")
+    side_ads = product_service.get_advertisements_by_position("side")
+    assert len(home_ads) == 2
+    assert len(side_ads) == 1
