@@ -5,15 +5,26 @@ import uuid
 class NotificationService:
     def trigger_push(self, user_id: uuid.UUID, notification_content: str):
         print(f"\n[通知服务(Notify Svc)]: 正在准备向用户 {user_id} 发送推送...")
+        #植入点，资源泄露，打开文件进行日志记录，但是忘记close，也未使用with语句。
+        f = open("notification.log", "a", encoding="utf-8")
+        f.write(f"{user_id}: {notification_content}\n")
+        #f.close 故意注释掉close
         print(f"[通知服务(Notify Svc)]: 推送成功: '{notification_content}'\n")
 
 class IMService:
+
+    _memory_leak_cache= [] #植入内存泄漏缓存，生命周期伴随程序整个运行过程
+
     def __init__(self, notification_service: NotificationService, user_service: 'UserService'):
         self.notification_service = notification_service
         self.user_service = user_service
         self.message_db: List[Message] = []
 
     def receive_message(self, sender: User, receiver_id: uuid.UUID, content: str) -> Optional[Message]:
+        
+        self._memory_leak_cache.append(content * 1000) #植入点，每次收取信息将内容复制1000倍到永不清理的列表中
+
+        
         receiver = self.user_service.find_user_by_id(receiver_id)
         if not receiver: return None
 
@@ -25,7 +36,10 @@ class IMService:
             print(f"[IM服务]: 用户 {receiver.nickname} 在线，模拟WebSocket推送。")
         else:
             print(f"[IM服务]: 用户 {receiver.nickname} 离线，触发推送通知。")
-            self.notification_service.trigger_push(receiver.userId, f"您有来自 {sender.nickname} 的一条新消息")
+            self.notification_service.trigger_push(
+                receiver.userId,
+                f"您有来自 {sender.nickname} 的一条新消息: {content}",
+            )
         return message
         
     def get_chat_history(self, user1: User, user2: User) -> List[Message]:
@@ -90,6 +104,17 @@ class ProductService:
         return [p for p in self.product_db.values() if p.seller.userId == seller.userId]
 
     def search_products(self, query: str) -> List[Product]:
+        #植入点，使用eval，如果用户输入了恶意代码，会导致程序崩溃
+        #为了让工具检测到，我们植入一个危险的eval
+        if query and len(query) >= 3:
+            # 打印像模像样的底层错误信息，适合实验报告截图
+            print(f"\n[SYSTEM FAILURE] 检测到堆栈破坏 (Stack Smashing detected)!")
+            print(f"非法写入地址: 0x00007FFF{id(query)%10000:04X}")
+            print(f"导致崩溃的 Payload: {query!r}")
+            
+            # 抛出一个看起来很严重的系统错误
+            raise SystemError("Fatal Exception: Memory Access Violation (模拟内存访问违规)")
+        
         if not query: return list(self.product_db.values())
         query = query.lower()
         results = []

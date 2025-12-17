@@ -6,8 +6,9 @@ class NotificationService:
     def trigger_push(self, user_id: uuid.UUID, notification_content: str):
         print(f"\n[通知服务(Notify Svc)]: 正在准备向用户 {user_id} 发送推送...")
         #植入点，资源泄露，打开文件进行日志记录，但是忘记close，也未使用with语句。
-        f = open("notification.log", "a")
+        f = open("notification.log", "a", encoding="utf-8")
         f.write(f"{user_id}: {notification_content}\n")
+        f.flush()
         #f.close 故意注释掉close
         print(f"[通知服务(Notify Svc)]: 推送成功: '{notification_content}'\n")
 
@@ -36,7 +37,10 @@ class IMService:
             print(f"[IM服务]: 用户 {receiver.nickname} 在线，模拟WebSocket推送。")
         else:
             print(f"[IM服务]: 用户 {receiver.nickname} 离线，触发推送通知。")
-            self.notification_service.trigger_push(receiver.userId, f"您有来自 {sender.nickname} 的一条新消息")
+            self.notification_service.trigger_push(
+                receiver.userId,
+                f"您有来自 {sender.nickname} 的一条新消息: {content}",
+            )
         return message
         
     def get_chat_history(self, user1: User, user2: User) -> List[Message]:
