@@ -56,3 +56,25 @@ class TestIntegration:
         with open("notification.log", "r") as f:
             content = f.read()
             assert "Hello Integration" in content
+
+    # --- 集成组 3: 在线消息不会触发推送 (User + IM) ---
+    def test_im_online_no_notification(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+
+        u_svc = UserService()
+        n_svc = NotificationService()
+        im_svc = IMService(n_svc, u_svc)
+
+        sender = u_svc.register("1", "s2@i.com", "1", "Sender")
+        receiver = u_svc.register("2", "r2@i.com", "1", "Receiver")
+        u_svc.login("r2@i.com", "1")
+
+        msg = im_svc.receive_message(sender, receiver.userId, "Hello Online")
+        assert msg is not None
+
+        history = im_svc.get_chat_history(sender, receiver)
+        assert len(history) == 1
+        assert history[0].content == "Hello Online"
+
+        import os
+        assert not os.path.exists("notification.log")
